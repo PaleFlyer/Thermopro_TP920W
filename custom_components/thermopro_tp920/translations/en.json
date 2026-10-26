@@ -1,0 +1,32 @@
+{
+  "config": {
+    "flow_title": "{name}",
+    "step": {
+      "user": {
+        "description": "Choose the thermometer to set up. It must be switched on, within range of a Bluetooth adapter or proxy, and not connected to the ThermoPro app.",
+        "data": {
+          "address": "Thermometer"
+        }
+      },
+      "bluetooth_confirm": {
+        "description": "Do you want to set up {name}? Home Assistant will keep the Bluetooth connection while it is switched on, so the ThermoPro app cannot connect at the same time."
+      }
+    },
+    "abort": {
+      "already_configured": "Device is already configured",
+      "already_in_progress": "Configuration is already in progress",
+      "no_devices_found": "No new thermometers found. Switch it on, close the ThermoPro app, and try again.",
+      "not_supported": "This device is not supported"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "description": "Applied the next time Home Assistant connects to the thermometer.",
+        "data": {
+          "fahrenheit_display": "Show °F on the thermometer's own display (off for °C)"
+        }
+      }
+    }
+  }
+}

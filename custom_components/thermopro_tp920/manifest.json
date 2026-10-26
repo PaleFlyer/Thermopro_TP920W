@@ -1,0 +1,19 @@
+{
+  "domain": "thermopro_tp920",
+  "name": "ThermoPro TP920 (Bluetooth, connected)",
+  "bluetooth": [
+    {
+      "connectable": true,
+      "local_name": "Thermopro"
+    }
+  ],
+  "codeowners": [],
+  "config_flow": true,
+  "dependencies": ["bluetooth_adapters"],
+  "documentation": "https://github.com/PaleFlyer/Thermopro_TP920W",
+  "integration_type": "device",
+  "iot_class": "local_push",
+  "issue_tracker": "https://github.com/PaleFlyer/Thermopro_TP920W/issues",
+  "requirements": [],
+  "version": "0.1.0"
+}

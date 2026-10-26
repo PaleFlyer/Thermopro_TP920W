@@ -1,0 +1,192 @@
+# Cook logic package for the ThermoPro TP920 integration.
+#
+# Save as config/packages/smoker_cook.yaml (packages must be enabled, see README).
+# Edit the three placeholders marked EDIT, then restart (first time) or quick reload.
+#
+# Assumes Home Assistant shows temperatures in °F. For °C, change the "°F" strings
+# and scale the numeric thresholds (rate 0.03/0.1 per minute, 40 drop, 150/130/120 limits).
+#
+# Probe roles: "ambient" is the probe clipped near the meat at grill level, "meat" is the
+# probe in the food. Swap the two source entities below if you use them the other way round.
+
+input_number:
+  cook_target_temp:
+    name: Cook target (meat)
+    min: 100
+    max: 250
+    step: 1
+    mode: box
+    unit_of_measurement: "°F"
+  flameout_drop:
+    name: Flameout drop threshold
+    min: 10
+    max: 100
+    step: 5
+    mode: box
+    unit_of_measurement: "°F"
+
+sensor:
+  - platform: derivative
+    source: sensor.cook_meat
+    name: Cook meat rate
+    unit_time: min
+    time_window: "00:20:00"
+    round: 2
+  - platform: statistics
+    name: Cook ambient max 15m
+    entity_id: sensor.cook_ambient
+    state_characteristic: value_max
+    max_age:
+      minutes: 15
+    sampling_size: 300
+
+template:
+  - sensor:
+      # EDIT: the two probe entities (Settings > Devices > ThermoPro TP920)
+      - name: "Cook ambient"
+        state: "{{ states('sensor.thermopro_tp920_adb7_probe_1') }}"
+        availability: "{{ is_number(states('sensor.thermopro_tp920_adb7_probe_1')) }}"
+        unit_of_measurement: "°F"
+        device_class: temperature
+        state_class: measurement
+      - name: "Cook meat"
+        state: "{{ states('sensor.thermopro_tp920_adb7_probe_2') }}"
+        availability: "{{ is_number(states('sensor.thermopro_tp920_adb7_probe_2')) }}"
+        unit_of_measurement: "°F"
+        device_class: temperature
+        state_class: measurement
+
+      - name: "Cook ETA linear"
+        unit_of_measurement: min
+        device_class: duration
+        availability: >
+          {{ is_number(states('sensor.cook_meat')) and is_number(states('sensor.cook_meat_rate'))
+             and states('sensor.cook_meat_rate')|float > 0.03
+             and states('sensor.cook_meat')|float < states('input_number.cook_target_temp')|float }}
+        state: >
+          {{ ((states('input_number.cook_target_temp')|float - states('sensor.cook_meat')|float)
+              / states('sensor.cook_meat_rate')|float) | round(0) }}
+
+      - name: "Cook ETA ambient-aware"
+        unit_of_measurement: min
+        device_class: duration
+        availability: >
+          {{ is_number(states('sensor.cook_meat')) and is_number(states('sensor.cook_ambient'))
+             and is_number(states('sensor.cook_meat_rate'))
+             and states('sensor.cook_meat_rate')|float > 0.03
+             and states('sensor.cook_meat')|float < states('input_number.cook_target_temp')|float
+             and states('sensor.cook_ambient')|float > states('input_number.cook_target_temp')|float + 1 }}
+        state: >
+          {% set a = states('sensor.cook_ambient')|float %}
+          {% set m = states('sensor.cook_meat')|float %}
+          {% set t = states('input_number.cook_target_temp')|float %}
+          {% set r = states('sensor.cook_meat_rate')|float %}
+          {{ ((a - m) / r * (((a - m) / (a - t)) | log)) | round(0) }}
+
+      - name: "Cook done at"
+        device_class: timestamp
+        availability: "{{ is_number(states('sensor.cook_eta_ambient_aware')) }}"
+        state: >
+          {{ (now() + timedelta(minutes=states('sensor.cook_eta_ambient_aware')|float)).isoformat() }}
+
+      - name: "Cook status"
+        state: >
+          {% set m = states('sensor.cook_meat')|float(none) %}
+          {% set a = states('sensor.cook_ambient')|float(none) %}
+          {% set t = states('input_number.cook_target_temp')|float(0) %}
+          {% if m is none or a is none %}No probe
+          {% elif m >= t %}Done
+          {% elif is_state('binary_sensor.cook_flameout','on') %}Flameout?
+          {% elif is_state('binary_sensor.cook_meat_stalled','on') %}Stalled
+          {% elif a < 120 %}Idle
+          {% else %}Cooking
+          {% endif %}
+
+  - binary_sensor:
+      - name: "Cook flameout"
+        delay_on: "00:05:00"
+        delay_off: "00:02:00"
+        state: >
+          {% set a = states('sensor.cook_ambient')|float(none) %}
+          {% set mx = states('sensor.cook_ambient_max_15m')|float(none) %}
+          {% set m = states('sensor.cook_meat')|float(none) %}
+          {% set t = states('input_number.cook_target_temp')|float(0) %}
+          {{ a is not none and mx is not none and m is not none
+             and m < t and mx > 150
+             and (mx - a) > states('input_number.flameout_drop')|float(40) }}
+
+      - name: "Cook meat stalled"
+        delay_on: "00:30:00"
+        state: >
+          {% set r = states('sensor.cook_meat_rate')|float(none) %}
+          {% set m = states('sensor.cook_meat')|float(none) %}
+          {% set t = states('input_number.cook_target_temp')|float(0) %}
+          {{ r is not none and m is not none and 130 < m < t and r < 0.1
+             and is_state('binary_sensor.cook_flameout','off') }}
+
+script:
+  cook_notify:
+    alias: "Cook: notify my phone(s)"
+    mode: queued
+    fields:
+      title:
+        description: Notification title
+      message:
+        description: Notification text
+      tag:
+        description: Short tag so a repeat replaces the old notification
+      loud:
+        description: true = play at alarm volume
+    sequence:
+      - variables:
+          # EDIT: your person entity. Sends to every Companion app phone attached to it.
+          trackers: "{{ state_attr('person.YOUR_PERSON', 'device_trackers') or [] }}"
+          phones: "{{ integration_entities('mobile_app') | select('in', trackers) | list }}"
+      - repeat:
+          for_each: "{{ phones }}"
+          sequence:
+            - action: "notify.mobile_app_{{ repeat.item.split('.')[1] }}"
+              data:
+                title: "{{ title }}"
+                message: "{{ message }}"
+                data:
+                  tag: "cook_{{ tag | default('alert') }}"
+                  ttl: 0
+                  priority: high
+                  channel: "{{ 'alarm_stream' if (loud | default(false)) else 'cook_alerts' }}"
+
+automation:
+  - id: cook_flameout_alert
+    alias: "Cook: flameout alert"
+    mode: single
+    triggers:
+      - trigger: state
+        entity_id: binary_sensor.cook_flameout
+        to: "on"
+    actions:
+      - action: script.cook_notify
+        data:
+          title: "Possible flameout"
+          tag: flameout
+          loud: true
+          message: >
+            Grill temp is {{ states('sensor.cook_ambient') | float(0) | round(0) }}°F,
+            down from {{ states('sensor.cook_ambient_max_15m') | float(0) | round(0) }}°F
+            in the last 15 min. Meat is at {{ states('sensor.cook_meat') | float(0) | round(0) }}°F.
+
+  - id: cook_done_alert
+    alias: "Cook: done alert"
+    mode: single
+    triggers:
+      - trigger: state
+        entity_id: sensor.cook_status
+        to: "Done"
+        for: "00:00:20"
+    actions:
+      - action: script.cook_notify
+        data:
+          title: "Cook is done"
+          tag: done
+          message: >
+            Meat has reached {{ states('sensor.cook_meat') | float(0) | round(0) }}°F
+            (target {{ states('input_number.cook_target_temp') | float(0) | round(0) }}°F).
