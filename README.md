@@ -8,7 +8,8 @@ The TP920W is not a broadcast sensor, so the built-in ThermoPro integration cann
 read it. It only streams temperatures to whoever connects, subscribes and replays
 the official app's startup handshake. This integration does exactly that, using
 Home Assistant's own Bluetooth stack, and reconnects by itself whenever the
-thermometer is switched on and in range.
+thermometer is switched on and in range. **It may work with other devices that use
+ThermoPro app. However only the TP920W is tested.
 
 > **Status: early / unverified in a live Home Assistant.** The protocol was
 > reverse engineered from a real TP920W and the byte-level code is unit tested
