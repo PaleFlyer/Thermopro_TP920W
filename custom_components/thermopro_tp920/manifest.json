@@ -7,7 +7,8 @@
       "local_name": "Thermopro"
     }
   ],
-  "codeowners": [],
+  "categories": ["sensors.temperature_humidity", "appliances_cleaning.cooking"],
+  "codeowners": ["@PaleFlyer"],
   "config_flow": true,
   "dependencies": ["bluetooth_adapters"],
   "documentation": "https://github.com/PaleFlyer/Thermopro_TP920W",
